@@ -1,0 +1,110 @@
+[
+  {
+    "row": 2,
+    "slug": "how-to-choose-a-standing-desk",
+    "title": "How to Choose a Standing Desk",
+    "status": "posted",
+    "post_id": 4,
+    "wp_status": "future",
+    "link": "http://127.0.0.1:8080/?p=4"
+  },
+  {
+    "row": 3,
+    "slug": "remote-work-security-basics",
+    "title": "Remote Work Security Basics",
+    "status": "posted",
+    "post_id": 5,
+    "wp_status": "future",
+    "link": "http://127.0.0.1:8080/?p=5"
+  },
+  {
+    "row": 4,
+    "slug": "q4-product-update",
+    "title": "Q4 Product Update",
+    "status": "posted",
+    "post_id": 6,
+    "wp_status": "future",
+    "link": "http://127.0.0.1:8080/?p=6"
+  },
+  {
+    "row": 5,
+    "slug": "",
+    "title": "Missing Fields Example",
+    "status": "validation_failed",
+    "reasons": [
+      "missing required fields: slug, body_html"
+    ]
+  },
+  {
+    "row": 6,
+    "slug": "Bad_Slug Example!",
+    "title": "Bad Slug Example",
+    "status": "validation_failed",
+    "reasons": [
+      "slug 'Bad_Slug Example!' has invalid characters (allowed: a-z, 0-9, single hyphens)"
+    ]
+  },
+  {
+    "row": 7,
+    "slug": "long-meta-description",
+    "title": "Long Meta Description Example",
+    "status": "validation_failed",
+    "reasons": [
+      "meta_description is 174 chars (max 160)"
+    ]
+  },
+  {
+    "row": 8,
+    "slug": "long-title-example",
+    "title": "This Title Is Deliberately Much Longer Than Sixty Characters Allowed",
+    "status": "validation_failed",
+    "reasons": [
+      "title is 68 chars (max 60)"
+    ]
+  },
+  {
+    "row": 9,
+    "slug": "past-date-example",
+    "title": "Past Date Example",
+    "status": "validation_failed",
+    "reasons": [
+      "publish_date 2024-01-15T09:00:00Z is in the past"
+    ]
+  },
+  {
+    "row": 10,
+    "slug": "wrong-category-example",
+    "title": "Wrong Category Example",
+    "status": "validation_failed",
+    "reasons": [
+      "category 'tutorials' not in allow-list ['blog', 'guides', 'news']"
+    ]
+  },
+  {
+    "row": 11,
+    "slug": "flaky-server-example",
+    "title": "Flaky Server Example",
+    "status": "posted",
+    "post_id": 7,
+    "wp_status": "future",
+    "link": "http://127.0.0.1:8080/?p=7"
+  },
+  {
+    "row": 12,
+    "slug": "rejected-by-wordpress",
+    "title": "Rejected By WordPress",
+    "status": "posted",
+    "post_id": 8,
+    "wp_status": "future",
+    "link": "http://127.0.0.1:8080/?p=8"
+  },
+  {
+    "row": 13,
+    "slug": "already-published-post",
+    "title": "Already Published Post",
+    "status": "posted",
+    "post_id": 9,
+    "wp_status": "future",
+    "link": "http://127.0.0.1:8080/?p=9"
+  }
+]

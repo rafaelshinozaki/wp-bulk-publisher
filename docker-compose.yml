@@ -1,0 +1,61 @@
+# Real WordPress + MySQL + Yoast for end-to-end testing of wp_bulk_publish.py
+#
+#   docker compose up -d
+#   docker compose logs -f setup     # prints the Application Password when done
+#
+# WordPress: http://localhost:8080  (admin / admin)
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      retries: 20
+
+  wordpress:
+    image: wordpress:6.8-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      # Lets Application Passwords work over plain HTTP on localhost.
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'local');
+    volumes:
+      - wp_data:/var/www/html
+      - ./yoast-rest-meta.php:/var/www/html/wp-content/mu-plugins/yoast-rest-meta.php:ro
+
+  setup:
+    image: wordpress:cli-2.12-php8.3
+    depends_on:
+      - wordpress
+    user: "33:33"  # same uid as www-data in the apache image, so files stay writable
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      WP_CLI_CACHE_DIR: /tmp/wp-cli-cache
+      HOME: /tmp
+    volumes:
+      - wp_data:/var/www/html
+      - ./docker/setup.sh:/setup.sh:ro
+    entrypoint: ["sh", "/setup.sh"]
+
+volumes:
+  db_data:
+  wp_data:

@@ -70,9 +70,13 @@ python wp_bulk_publish.py articles.csv --report report.json --status draft
 
 The exit code is `1` if any row failed at the API level, so a scheduler or CI job can detect it.
 
-## Testing locally with the mock server
+## Testing locally
 
-`mock_wp_server.py` simulates the endpoints the script uses. The sample CSV has rows that trigger every validation rule, plus a row where the server returns 503 twice before succeeding, a row the server rejects with 400, and a row whose slug already exists.
+There are three ways to test, from lightest to most realistic.
+
+### 1. Mock server (no WordPress)
+
+`mock_wp_server.py` simulates the endpoints the script uses. The sample CSV has rows that trigger every validation rule, plus a row where the mock returns 503 twice before succeeding, a row it rejects with 400, and a row whose slug already exists. This is the easiest way to see the retry and error paths.
 
 ```bash
 python mock_wp_server.py &
@@ -81,7 +85,30 @@ WP_URL=http://127.0.0.1:8765 WP_USER=bot WP_APP_PASSWORD="app pass word" \
   python wp_bulk_publish.py articles.csv --report report.json
 ```
 
-Expected result: 4 posted, 6 validation_failed, 1 api_failed, 1 skipped_exists.
+Expected result: 4 posted, 6 validation_failed, 1 api_failed, 1 skipped_exists (see `sample_report.json`).
+
+### 2. Real WordPress without Docker (PHP + SQLite)
+
+`local-wp/setup.sh` downloads WordPress, WP-CLI and the official SQLite database plugin, installs WordPress, creates the categories, an Editor user and an Application Password, and copies the mu-plugin. It also tries to install Yoast from wordpress.org. Requires git, curl and PHP 8.1+ with `pdo_sqlite`.
+
+```bash
+./local-wp/setup.sh
+php -S 127.0.0.1:8080 -t .local-wp/wordpress .local-wp/router.php
+# in another terminal, use the exports printed by setup.sh
+python wp_bulk_publish.py articles.csv --report report.json
+```
+
+Expected result: 6 posted as scheduled posts with the Yoast meta saved, 6 validation_failed (see `sample_report_real_wp.json`). The rows that fail on the mock (503, 400, existing slug) are created normally here, since a real WordPress doesn't force those errors. Running the script a second time returns `skipped_exists` for all 6, and removing the mu-plugin makes the report show the "Yoast meta not persisted" warning, because WordPress drops the unregistered meta and still returns 201.
+
+### 3. Real WordPress with Docker (MySQL + Apache + Yoast)
+
+```bash
+docker compose up -d
+docker compose logs -f setup   # prints the Application Password and exports when it's done
+python wp_bulk_publish.py articles.csv --report report.json
+```
+
+WordPress runs at http://localhost:8080 (admin / admin). `docker compose down -v` removes everything.
 
 ## Files
 
@@ -92,6 +119,9 @@ Expected result: 4 posted, 6 validation_failed, 1 api_failed, 1 skipped_exists.
 | `yoast-rest-meta.php` | mu-plugin that makes Yoast fields writable via REST |
 | `mock_wp_server.py` | Local mock of the WordPress REST API |
 | `sample_report.json` | Report generated from the sample CSV against the mock |
+| `sample_report_real_wp.json` | Report generated from the sample CSV against a real WordPress 6.8.3 |
+| `local-wp/setup.sh` | Real WordPress on PHP + SQLite, no Docker |
+| `docker-compose.yml`, `docker/setup.sh` | Real WordPress with MySQL and Yoast in Docker |
 
 ## Next steps for production use
 
