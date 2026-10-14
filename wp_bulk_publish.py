@@ -110,14 +110,31 @@ def validate_row(row: dict, now: datetime) -> list[str]:
 # WordPress client
 # --------------------------------------------------------------------------- #
 class ApiError(Exception):
+    """Final failure of an API call. `status` is None for timeouts and connection errors."""
+
     def __init__(self, status: int | None, message: str):
         super().__init__(message)
         self.status = status
         self.message = message
 
 
+class AlreadyCreated(Exception):
+    """Raised from a retry check when the post turns out to exist already.
+
+    A POST can time out on our side and still succeed on the server. Before
+    re-sending it, we look the slug up; if the post is there, this exception
+    stops the retry loop and carries the existing post back to the caller.
+    """
+
+    def __init__(self, post: dict):
+        super().__init__(post.get("slug"))
+        self.post = post
+
+
 @dataclass
 class WPClient:
+    """Thin wrapper around the WordPress REST API (wp/v2) with pacing and retries."""
+
     base_url: str
     user: str
     app_password: str
@@ -134,13 +151,30 @@ class WPClient:
         return f"{self.base_url}/wp-json/wp/v2/{path.lstrip('/')}"
 
     def _pace(self):
+        """Keep at least MIN_INTERVAL_S between write requests.
+
+        Only writes are paced: they are the expensive calls on the client's
+        server and the ones security plugins/WAFs tend to rate-limit. The GETs
+        (slug and category lookups) are cheap and the categories are cached.
+        """
         wait = MIN_INTERVAL_S - (time.monotonic() - self._last_write)
         if wait > 0:
             time.sleep(wait)
         self._last_write = time.monotonic()
 
-    def request(self, method: str, path: str, *, on_retry=None, **kwargs) -> requests.Response:
-        """HTTP call with backoff on 429/5xx/timeouts. Raises ApiError on final failure."""
+    def request(self, method: str, path: str, *, before_retry=None, **kwargs) -> requests.Response:
+        """HTTP call with exponential backoff on 429/5xx/timeouts.
+
+        - 2xx/3xx: returned right away.
+        - 429, 500, 502, 503, 504, timeouts, connection errors: retried up to
+          MAX_RETRIES times, waiting 1s, 2s, 4s... (or Retry-After on a 429).
+        - Any other 4xx: raised immediately. A 400/401/403/404 won't fix itself,
+          so retrying only adds load on the client's site.
+        - `before_retry`: optional callback run before each retry. create_post
+          uses it to check whether the failed POST actually created the post.
+
+        Raises ApiError when the request finally fails.
+        """
         is_write = method.upper() != "GET"
         last_err: ApiError | None = None
 
@@ -175,14 +209,13 @@ class WPClient:
 
             # Before re-sending a write, give the caller a chance to detect that
             # the previous attempt actually succeeded server-side (timeout case).
-            if on_retry is not None:
-                existing = on_retry()
-                if existing is not None:
-                    return existing
+            if before_retry is not None:
+                before_retry()
 
         raise last_err  # type: ignore[misc]
 
     def category_id(self, slug: str) -> int:
+        """Resolve a category slug to its ID (the posts endpoint only takes IDs). Cached."""
         if slug not in self._category_ids:
             resp = self.request("GET", "categories", params={"slug": slug})
             data = resp.json()
@@ -192,26 +225,37 @@ class WPClient:
         return self._category_ids[slug]
 
     def find_post_by_slug(self, slug: str) -> dict | None:
+        """Return the post with this slug in any status (draft, scheduled, published), or None.
+
+        `status=any` and `context=edit` need an authenticated user with edit
+        rights; without them a scheduled or draft post would not be found.
+        """
         resp = self.request("GET", "posts",
                             params={"slug": slug, "status": "any", "context": "edit"})
         data = resp.json()
         return data[0] if data else None
 
     def create_post(self, payload: dict) -> dict:
+        """Create the post, without ever creating it twice.
+
+        If the POST fails with a retryable error, the slug is looked up before
+        trying again: when the post already exists, the earlier attempt worked
+        on the server and we return that post instead of sending a duplicate
+        (WordPress would accept it and rename the slug to `<slug>-2`).
+        """
         slug = payload["slug"]
 
-        def already_created():
+        def check_not_created():
             found = self.find_post_by_slug(slug)
-            if found is None:
-                return None
-            log.info("post '%s' exists after a failed attempt; not re-posting", slug)
-            fake = requests.Response()
-            fake.status_code = 200
-            fake._content = json.dumps(found).encode()
-            return fake
+            if found is not None:
+                raise AlreadyCreated(found)
 
-        resp = self.request("POST", "posts", json=payload, on_retry=already_created)
-        return resp.json()
+        try:
+            return self.request("POST", "posts", json=payload,
+                                before_retry=check_not_created).json()
+        except AlreadyCreated as exc:
+            log.info("post '%s' was created by an earlier attempt; not re-posting", slug)
+            return exc.post
 
 
 def _error_message(resp: requests.Response) -> str:
@@ -226,6 +270,12 @@ def _error_message(resp: requests.Response) -> str:
 # Pipeline
 # --------------------------------------------------------------------------- #
 def build_payload(row: dict, category_id: int, status: str) -> dict:
+    """Map a CSV row to the /wp/v2/posts request body.
+
+    `date_gmt` is sent in UTC so the schedule doesn't depend on the site's
+    timezone setting. The Yoast fields go in `meta`, which only works when the
+    keys are registered for REST (see yoast-rest-meta.php).
+    """
     publish_utc = parse_publish_date(row["publish_date"])
     return {
         "title": row["title"].strip(),
@@ -243,12 +293,26 @@ def build_payload(row: dict, category_id: int, status: str) -> dict:
 
 
 def meta_persisted(post: dict, payload: dict) -> bool:
-    """WordPress silently drops unregistered meta keys - verify they stuck."""
+    """Check that WordPress kept the Yoast meta we sent.
+
+    WordPress silently drops meta keys that aren't registered for REST and
+    still answers 201, so a missing or empty key means the SEO fields were
+    lost. We don't compare exact values: WordPress sanitizes the text on save
+    (sanitize_text_field strips tags, for example), so a valid save can come
+    back slightly different from what we sent.
+    """
     meta = post.get("meta") or {}
-    return all(meta.get(k) == v for k, v in payload["meta"].items())
+    return all(meta.get(k) for k in payload["meta"])
 
 
 def run(csv_path: str, client: WPClient | None, status: str, now: datetime) -> list[dict]:
+    """Process every CSV row and return one report entry per row.
+
+    Order per row: validate -> skip if the slug already exists on the site ->
+    create -> check the Yoast meta. Each row is isolated in its own try/except,
+    so an API error or an unexpected exception is recorded in the report and
+    the run moves on to the next row. `client=None` means dry run.
+    """
     report: list[dict] = []
 
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
@@ -264,9 +328,10 @@ def run(csv_path: str, client: WPClient | None, status: str, now: datetime) -> l
                  "title": (row.get("title") or "").strip()}
 
         errors = validate_row(row, now)
-        if entry["slug"] in seen_slugs:
-            errors.append("duplicate slug within this CSV")
-        seen_slugs.add(entry["slug"])
+        if entry["slug"]:  # an empty slug is already reported as a missing field
+            if entry["slug"] in seen_slugs:
+                errors.append("duplicate slug within this CSV")
+            seen_slugs.add(entry["slug"])
 
         if errors:
             report.append({**entry, "status": "validation_failed", "reasons": errors})

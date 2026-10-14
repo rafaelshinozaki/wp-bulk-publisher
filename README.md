@@ -70,9 +70,39 @@ python wp_bulk_publish.py articles.csv --report report.json --status draft
 
 The exit code is `1` if any row failed at the API level, so a scheduler or CI job can detect it.
 
+## Design decisions
+
+- **Validate everything before calling the API.** Bad rows never reach the client's site, and `--dry-run` gives the full list of problems without any risk.
+- **Scheduled or draft, never `publish`.** Rows go out as `future` (scheduled for `publish_date`) or `draft` with `--status draft`. Nothing goes live straight from a script.
+- **Dates are sent as `date_gmt` in UTC.** The schedule doesn't depend on the site's timezone setting. A date without a timezone is treated as UTC, and a date with an offset (`-03:00`) is converted.
+- **Only transient errors are retried.** 429, 500, 502, 503, 504, timeouts and connection errors are retried up to 4 times with exponential backoff (1s, 2s, 4s), using `Retry-After` on a 429 when it's longer. Any other 4xx fails right away: a 400, 401 or 403 won't fix itself, and retrying only adds load on the client's server.
+- **Writes are paced at 1 request per second.** Security plugins and WAFs (Wordfence, Cloudflare) tend to block bursts of POSTs, and shared hosting can slow down for real visitors. GETs are not paced because they are cheap, and category IDs are looked up once and cached.
+- **No duplicate posts.** Before creating a post the script checks if the slug already exists (`status=any`, so drafts and scheduled posts count), which makes re-running a partially failed batch safe. And if a POST times out, the slug is checked again before retrying, because the request may have worked on the server. Without this, WordPress would accept the second POST and create `<slug>-2`.
+- **The Yoast meta is checked after each create.** WordPress silently drops meta keys that aren't registered for REST and still returns 201, so the script checks that the keys came back non-empty. It doesn't compare exact values, because WordPress sanitizes the text on save.
+- **One row can't kill the run.** Each row has its own `try/except`, so an API error or an unexpected exception goes to the report and the script moves on.
+- **Exit code 1 when any row fails at the API level,** so a cron job, pipeline or CI step can alert on it. Validation failures don't change the exit code, since they are content problems, not system problems.
+- **Credentials only from environment variables,** never from command-line arguments (they would show up in the shell history and process list), and never over plain HTTP except on localhost.
+
+## Limitations
+
+- **Featured images and the Yoast primary category are not set.** The CSV doesn't have those columns. Supporting images would mean uploading each one to `/wp/v2/media` first and passing the returned ID as `featured_media`.
+- **Small race window.** Between checking the slug and creating the post, another process could create the same slug. Fine for a single scheduled run; with several runners in parallel, a lock or a run ledger (see below) would be needed.
+- **Sequential.** About one post per second, so 100 rows take a couple of minutes. That's on purpose to protect the client's site, not a performance limit of the code.
+- **Edits are not synced.** If a row changes after its post was created, the script skips it as `skipped_exists` instead of updating the post.
+- **The Yoast meta keys are hardcoded.** RankMath or another SEO plugin would need different keys (see next steps).
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The unit tests (`tests/test_wp_bulk_publish.py`) cover every validation rule, the inclusive length limits, date and timezone handling, duplicate slugs inside the CSV, the Yoast meta check, and the HTTP client: 5xx retried until success, 4xx not retried, giving up after the maximum number of retries, `Retry-After`, a timed-out POST that already created the post (no second POST is sent), and a failed row not stopping the run. The HTTP tests use a scripted fake session, so they don't need a server and run in under a second.
+
 ## Testing locally
 
-There are three ways to test, from lightest to most realistic.
+Besides the unit tests, there are three ways to run the script end to end, from lightest to most realistic.
 
 ### 1. Mock server (no WordPress)
 
@@ -131,6 +161,7 @@ python wp_bulk_publish.py articles.csv --report report.json
 | `articles.csv` | Sample input |
 | `yoast-rest-meta.php` | mu-plugin that makes Yoast fields writable via REST |
 | `mock_wp_server.py` | Local mock of the WordPress REST API |
+| `tests/test_wp_bulk_publish.py` | Unit tests (pytest) |
 | `sample_report.json` | Report generated from the sample CSV against the mock |
 | `sample_report_real_wp.json` | Report generated from the sample CSV against a real WordPress (PHP + SQLite setup) |
 | `local-wp/setup.sh` | Real WordPress on PHP + SQLite, no Docker |
@@ -143,4 +174,4 @@ python wp_bulk_publish.py articles.csv --report report.json
 - Run history in Postgres keyed by client and row hash, so runs can resume and edited rows update existing posts
 - Slack summary after each run and alerts when a run fails, processes zero rows or doesn't run
 - Post-publish check that the live page has the right title, meta description, canonical and schema
-- Unit tests for validation and an integration test against the mock in CI
+- Run the unit tests in CI, plus an end-to-end test against the Docker WordPress
