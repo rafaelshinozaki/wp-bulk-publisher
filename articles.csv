@@ -1,0 +1,13 @@
+title,slug,meta_title,meta_description,body_html,primary_keyword,publish_date,category
+How to Choose a Standing Desk,how-to-choose-a-standing-desk,How to Choose a Standing Desk (2026 Guide),"Height range, stability and motor quality: what actually matters when picking a standing desk.","<h2>Start with height range</h2><p>Measure your elbow height...</p>",standing desk,2026-11-02T09:00:00-03:00,guides
+Remote Work Security Basics,remote-work-security-basics,Remote Work Security Basics,"Five practical steps to secure a home office: VPN, MFA, updates, backups and a separate work device.","<h2>Use MFA everywhere</h2><p>Passwords alone...</p>",remote work security,2026-11-05T09:00:00Z,blog
+Q4 Product Update,q4-product-update,Q4 Product Update,"What shipped this quarter and what is coming next.","<p>This quarter we shipped...</p>",product update,2026-11-10T12:00:00Z,news
+Missing Fields Example,,Missing Fields Example,"This row has no slug and no body.",,missing fields,2026-11-12T09:00:00Z,blog
+Bad Slug Example,Bad_Slug Example!,Bad Slug Example,"Slug contains uppercase, underscore, space and punctuation.","<p>Body</p>",bad slug,2026-11-12T09:00:00Z,blog
+Long Meta Description Example,long-meta-description,Long Meta Description,"This meta description is intentionally far too long so that it exceeds the one hundred sixty character limit that Google typically truncates at in search results pages today.","<p>Body</p>",meta description,2026-11-12T09:00:00Z,guides
+This Title Is Deliberately Much Longer Than Sixty Characters Allowed,long-title-example,Long Title Example,"Title over 60 characters.","<p>Body</p>",long title,2026-11-12T09:00:00Z,blog
+Past Date Example,past-date-example,Past Date Example,"Publish date is in the past.","<p>Body</p>",past date,2024-01-15T09:00:00Z,news
+Wrong Category Example,wrong-category-example,Wrong Category Example,"Category is not in the allow-list.","<p>Body</p>",category,2026-11-12T09:00:00Z,tutorials
+Flaky Server Example,flaky-server-example,Flaky Server Example,"Mock returns 503 twice then succeeds - exercises retries.","<p>Body</p>",retries,2026-11-15T09:00:00Z,blog
+Rejected By WordPress,rejected-by-wordpress,Rejected By WordPress,"Mock returns a 400 for this slug - exercises api_failed.","<p>Body</p>",api failure,2026-11-15T09:00:00Z,blog
+Already Published Post,already-published-post,Already Published Post,"Mock already has this slug - exercises idempotency.","<p>Body</p>",idempotency,2026-11-15T09:00:00Z,blog
