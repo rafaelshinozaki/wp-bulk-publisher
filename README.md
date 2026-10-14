@@ -110,6 +110,19 @@ python wp_bulk_publish.py articles.csv --report report.json
 
 WordPress runs at http://localhost:8080 (admin / admin). `docker compose down -v` removes everything.
 
+This stack installs WordPress 6.9, MySQL 8 and the current Yoast SEO release (Yoast now requires WordPress 6.9+). Tested on Windows 11 with Docker Desktop: the 6 valid rows are created as scheduled posts, Yoast picks up the title and meta description from the meta fields (visible in `yoast_head_json` on `GET /wp/v2/posts/<id>?context=edit`) and generates the Article schema on its own, and a second run returns `skipped_exists` for all 6.
+
+On Windows (PowerShell), the env vars are set like this:
+
+```powershell
+$env:WP_URL = "http://localhost:8080"
+$env:WP_USER = "automation-bot"
+$env:WP_APP_PASSWORD = "<password printed by the setup container>"
+python wp_bulk_publish.py articles.csv --report report.json
+```
+
+`.gitattributes` forces LF line endings on the shell scripts, so a Windows checkout doesn't break them inside the Linux containers.
+
 ## Files
 
 | File | Description |
@@ -119,7 +132,7 @@ WordPress runs at http://localhost:8080 (admin / admin). `docker compose down -v
 | `yoast-rest-meta.php` | mu-plugin that makes Yoast fields writable via REST |
 | `mock_wp_server.py` | Local mock of the WordPress REST API |
 | `sample_report.json` | Report generated from the sample CSV against the mock |
-| `sample_report_real_wp.json` | Report generated from the sample CSV against a real WordPress 6.8.3 |
+| `sample_report_real_wp.json` | Report generated from the sample CSV against a real WordPress (PHP + SQLite setup) |
 | `local-wp/setup.sh` | Real WordPress on PHP + SQLite, no Docker |
 | `docker-compose.yml`, `docker/setup.sh` | Real WordPress with MySQL and Yoast in Docker |
 

@@ -3,8 +3,16 @@
 set -e
 cd /var/www/html
 
+db_ready() {
+  # Checked with PHP's mysqli instead of `wp db check`: the CLI image ships the
+  # MariaDB client, which rejects MySQL 8's self-signed TLS certificate.
+  php -r '$m = @new mysqli(getenv("WORDPRESS_DB_HOST"), getenv("WORDPRESS_DB_USER"),
+    getenv("WORDPRESS_DB_PASSWORD"), getenv("WORDPRESS_DB_NAME"));
+    exit($m->connect_errno ? 1 : 0);' 2>/dev/null
+}
+
 echo "waiting for WordPress files and database..."
-until [ -f wp-config.php ] && wp db check >/dev/null 2>&1; do sleep 2; done
+until [ -f wp-config.php ] && db_ready; do sleep 2; done
 
 if ! wp core is-installed 2>/dev/null; then
   wp core install --url=http://localhost:8080 --title="Local WP" \

@@ -9,7 +9,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DIR="${1:-$REPO_DIR/.local-wp}"
 PORT="${PORT:-8080}"
-WP_VERSION="${WP_VERSION:-6.8.3}"
+WP_VERSION="${WP_VERSION:-6.9.9}"
 SQLITE_VERSION="${SQLITE_VERSION:-v2.2.2}"
 WPCLI_VERSION="${WPCLI_VERSION:-2.12.0}"
 
